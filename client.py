@@ -114,16 +114,13 @@ class ReliableUDPClient:
     # Session Establishment (Broadcast Handshake)
     # ---------------------------
     def connect(self):
-        print("\nBroadcasting handshake request...")
-
-        attempts = 0
-
-        while attempts < 3:
-            print("Handshake Attempt", attempts + 1, "...")
+        print("\nHANDSHAKE_REQUEST")
+        for attempt in range(1, 4):   # Exactly 3 attempts
+            print(f"Retry {attempt}/3...")
 
             syn_pkt = make_packet(TYPE_SYN, self.seq)
 
-            # ✅ Broadcast SYN
+            # Broadcast SYN
             self.sock.sendto(syn_pkt, self.server_addr)
 
             try:
@@ -136,24 +133,24 @@ class ReliableUDPClient:
                     continue
 
                 if msg_type == TYPE_SYNACK:
-                    print("Server found at:", addr[0])
 
-                    # ✅ Save real server address (stop broadcasting)
+                    print(f"\nServer found at ({addr[0]})")
+
+                    # Save real server address
                     self.server_addr = addr
-
-                    # Send ACK back
+                    # Complete handshake
                     ack_pkt = make_packet(TYPE_ACK, seq)
                     self.sock.sendto(ack_pkt, self.server_addr)
-
+                    # Save session state
                     self.session_active = True
-                    print("Session Established Successfully!\n")
+                    print("Session Established Successfully!")
                     return True
 
             except socket.timeout:
-                attempts += 1
-                time.sleep(0.5)
+                if attempt < 3:
+                    time.sleep(0.5)
 
-        print("No active server found.")
+        print("\nNo active server found.")
         return False
 
 
