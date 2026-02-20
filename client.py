@@ -2,12 +2,12 @@ import socket
 import struct
 import os
 import hashlib
-import time   # ✅ added for sleep
+import time   
 
 # ===============================
 # Protocol Constants
 # ===============================
-
+DEFAULT_PORT = 5555   
 TYPE_SYN     = 1
 TYPE_SYNACK  = 2
 TYPE_ACK     = 3
@@ -17,12 +17,9 @@ TYPE_DATA    = 6
 TYPE_EOF     = 7
 TYPE_FIN     = 8
 TYPE_ERROR   = 9
-
 MAX_PAYLOAD = 1024
-
 TIMEOUT = 0.5          # ✅ shorter timeout for broadcast handshake
 MAX_RETRIES = 5
-
 HASH_SIZE = 32  # SHA-256 digest size
 
 
@@ -117,16 +114,13 @@ class ReliableUDPClient:
     # Session Establishment (Broadcast Handshake)
     # ---------------------------
     def connect(self):
-        print("\nBroadcasting handshake request...")
-
-        attempts = 0
-
-        while attempts < 3:
-            print("Handshake Attempt", attempts + 1, "...")
+        print("\nHANDSHAKE_REQUEST")
+        for attempt in range(1, 4):   # Exactly 3 attempts
+            print(f"Retry {attempt}/3...")
 
             syn_pkt = make_packet(TYPE_SYN, self.seq)
 
-            # ✅ Broadcast SYN
+            # Broadcast SYN
             self.sock.sendto(syn_pkt, self.server_addr)
 
             try:
@@ -139,24 +133,24 @@ class ReliableUDPClient:
                     continue
 
                 if msg_type == TYPE_SYNACK:
-                    print("Server found at:", addr[0])
 
-                    # ✅ Save real server address (stop broadcasting)
+                    print(f"\nServer found at ({addr[0]})")
+
+                    # Save real server address
                     self.server_addr = addr
-
-                    # Send ACK back
+                    # Complete handshake
                     ack_pkt = make_packet(TYPE_ACK, seq)
                     self.sock.sendto(ack_pkt, self.server_addr)
-
+                    # Save session state
                     self.session_active = True
-                    print("Session Established Successfully!\n")
+                    print("Session Established Successfully!")
                     return True
 
             except socket.timeout:
-                attempts += 1
-                time.sleep(0.5)
+                if attempt < 3:
+                    time.sleep(0.5)
 
-        print("No active server found.")
+        print("\nNo active server found.")
         return False
 
 
@@ -286,10 +280,16 @@ class ReliableUDPClient:
 # ===============================
 
 if __name__ == "__main__":
+    print(f"Simple File Transfer Application (UDP)")
+    print("        CLIENT INTERFACE")
+    print(f"\nCreated by: Ke, Xan Luo and Mojica, Maurienne Marie\n\n")
+    input("PRESS [ENTER] TO START HANDSHAKE_REQUEST")
 
-    server_port = int(input("Enter server port: "))
 
-    client = ReliableUDPClient(server_port)
+
+    os.system('cls')
+
+    client = ReliableUDPClient(DEFAULT_PORT)
 
     if not client.connect():
         exit()
