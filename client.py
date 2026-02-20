@@ -2,12 +2,12 @@ import socket
 import struct
 import os
 import hashlib
-import time   # ✅ added for sleep
+import time   
 
 # ===============================
 # Protocol Constants
 # ===============================
-
+DEFAULT_PORT = 5555   
 TYPE_SYN     = 1
 TYPE_SYNACK  = 2
 TYPE_ACK     = 3
@@ -17,12 +17,9 @@ TYPE_DATA    = 6
 TYPE_EOF     = 7
 TYPE_FIN     = 8
 TYPE_ERROR   = 9
-
 MAX_PAYLOAD = 1024
-
 TIMEOUT = 0.5          # ✅ shorter timeout for broadcast handshake
 MAX_RETRIES = 5
-
 HASH_SIZE = 32  # SHA-256 digest size
 
 
@@ -286,10 +283,16 @@ class ReliableUDPClient:
 # ===============================
 
 if __name__ == "__main__":
+    print(f"Simple File Transfer Application (UDP)")
+    print("        CLIENT INTERFACE")
+    print(f"\nCreated by: Ke, Xan Luo and Mojica, Maurienne Marie\n\n")
+    input("PRESS [ENTER] TO START HANDSHAKE_REQUEST")
 
-    server_port = int(input("Enter server port: "))
 
-    client = ReliableUDPClient(server_port)
+
+    os.system('cls')
+
+    client = ReliableUDPClient(DEFAULT_PORT)
 
     if not client.connect():
         exit()
