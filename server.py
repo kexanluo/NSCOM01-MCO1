@@ -11,8 +11,9 @@ MAX_RETRIES = 3
 BUFFER_SIZE = 1024
 folder = Path.home() / "Desktop" / "nscomServer"
 
-HEADER_FORMAT = "!I"
+HEADER_FORMAT = "!BIH32s"
 HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
+EMPTY_HASH = b"\x00" * 32
 
 UPLOAD_PLEN = 0
 RECEIVED_STATE = False
@@ -42,9 +43,9 @@ def receive_message():
         message_type, seq, plen, hash_value = struct.unpack(HEADER_FORMAT, data[:HEADER_SIZE])
         payload = data[HEADER_SIZE:HEADER_SIZE + plen]
 
-        if message_type == "HANDSHAKE_REQUEST":
+        if message_type == 1:
             print(f"[SERVER] HANDSHAKE REQUEST from %s ACKNOWLEDGED", addr[0])
-            header = struct.pack(HEADER_FORMAT, "HANDSHAKE_RESPONSE", -1, 0, 0, 0)
+            header = struct.pack(HEADER_FORMAT, 2, seq + 1, 0, EMPTY_HASH)
             sock.sendto(header, client_addr)
         elif message_type == "DOWNLOAD_REQ":
             if checkFileExist(payload):
@@ -61,7 +62,7 @@ def receive_message():
             print(f"[SERVER] DOWNLOAD RECEIVED by %s (%s)", addr[0], hash_value)
             RECEIVED_STATE = True
             CLIENT_ACK = payload
-        elif message_type == "UPLOAD_REQ"
+        elif message_type == "UPLOAD_REQ":
             print(f"[SERVER] UPLOAD REQUEST from %s (%s) ACKNOWLEDGED", addr[0], payload)
             UPLOAD_LEN = payload # Format: <File Size> SP <Filename>
             header = struct.pack(HEADER_FORMAT, "UPLOAD_ACK", -1, 0, 0, 0)
@@ -79,3 +80,4 @@ os.system('cls')
 
 config.checkDirectory("Server")
 startSocket()
+threading.Thread(target=receive_message).start()
