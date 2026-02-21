@@ -9,7 +9,7 @@ from pathlib import Path
 PORT = 5555
 MAX_RETRIES = 3
 BUFFER_SIZE = 1024
-folder = Path.home() / "Desktop" / "nscomServer"
+folder = Path(__file__).resolve().parent / "nscomServer"
 
 HEADER_FORMAT = "!BIH32s"
 HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
@@ -17,7 +17,7 @@ EMPTY_HASH = b"\x00" * 32
 
 UPLOAD_PLEN = 0
 RECEIVED_STATE = False
-CLIENT_ACK = 0
+SEQ = 0
 
 file_chunks = {}
 
@@ -36,18 +36,32 @@ def checkFileExist(filename):
     else:
         return 0
 
+def hashDigest(content):
+    return hashlib.sha256(content).digest()
+
 def receive_message():
     while True:
         data, client_addr = sock.recvfrom(BUFFER_SIZE)
 
         message_type, seq, plen, hash_value = struct.unpack(HEADER_FORMAT, data[:HEADER_SIZE])
         payload = data[HEADER_SIZE:HEADER_SIZE + plen]
+        SEQ = seq
 
         if message_type == 1:
-            print(f"[SERVER] HANDSHAKE REQUEST from {client_addr[0]} ACKNOWLEDGED")
+            print(f"[SERVER] HANDSHAKE REQUEST from {client_addr[0]} | SEQ: {SEQ}")
             header = struct.pack(HEADER_FORMAT, 2, seq + 1, 0, EMPTY_HASH)
             sock.sendto(header, client_addr)
+            SEQ = seq + 1
+            print(f"[SERVER] HANDSHAKE RESPONSE sent to {client_addr[0]} | SEQ: {SEQ}")
         elif message_type == 3:
+            print(f"[SERVER] FILE LIST REQUEST from {client_addr[0]} | SEQ: {SEQ}")
+            files = [f.name for f in folder.iterdir() if f.is_file()]
+            payload = json.dumps(files).encode()
+            header = struct.pack(HEADER_FORMAT, 4, seq + 1, len(payload), hashDigest(payload))
+            SEQ = seq + 1
+            sock.sendto(header + payload, client_addr)
+            print(f"[SERVER] FILE LIST RESPONSE sent to {client_addr[0]} | SEQ: {SEQ}")
+        elif message_type == 444:
             if checkFileExist(payload):
                 print(f"[SERVER] DOWNLOAD REQUEST from %s (%s) ACKNOWLEDGED", client_addr[0], payload)
                 CLIENT_ACK = 0
