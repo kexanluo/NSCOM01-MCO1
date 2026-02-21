@@ -3,7 +3,10 @@ import socket
 import threading
 import json
 import os
+import sys
 import struct
+import hashlib
+from datetime import datetime
 from pathlib import Path
 
 PORT = 5555
@@ -15,18 +18,29 @@ HEADER_FORMAT = "!BIH32s"
 HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
 EMPTY_HASH = b"\x00" * 32
 
-UPLOAD_PLEN = 0
+UPLOAD_LEN = 0
+UPLOAD_FNAME = ""
 RECEIVED_STATE = False
 SEQ = 0
 
 file_chunks = {}
+
+def display_message(message):
+    sys.stdout.write('\r\033[K')
+    sys.stdout.flush()
+    print(message)
+    sys.stdout.write(f"[server_command]: ")
+    sys.stdout.flush()
+
+def timestamp():
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 def startSocket():
     global sock
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind(("", PORT))
-    print("[SERVER] SOCKET - Server Listening...")
+    display_message(f"[SERVER] {timestamp()} SOCKET - Server Listening...")
 
 def checkFileExist(filename):
     file_path = folder / filename
@@ -48,41 +62,44 @@ def receive_message():
         SEQ = seq
 
         if message_type == 1:
-            print(f"[SERVER] HANDSHAKE REQUEST from {client_addr[0]} | SEQ: {SEQ}")
+            display_message(f"[SERVER] {timestamp()} HANDSHAKE REQUEST from {client_addr[0]} | SEQ: {SEQ}")
             header = struct.pack(HEADER_FORMAT, 2, seq + 1, 0, EMPTY_HASH)
             sock.sendto(header, client_addr)
             SEQ = seq + 1
-            print(f"[SERVER] HANDSHAKE RESPONSE sent to {client_addr[0]} | SEQ: {SEQ}")
+            display_message(f"[SERVER] {timestamp()} HANDSHAKE RESPONSE sent to {client_addr[0]} | SEQ: {SEQ}")
         elif message_type == 3:
-            print(f"[SERVER] FILE LIST REQUEST from {client_addr[0]} | SEQ: {SEQ}")
+            display_message(f"[SERVER] {timestamp()} FILE LIST REQUEST from {client_addr[0]} | SEQ: {SEQ}")
             files = [f.name for f in folder.iterdir() if f.is_file()]
             payload = json.dumps(files).encode()
             header = struct.pack(HEADER_FORMAT, 4, seq + 1, len(payload), hashDigest(payload))
             SEQ = seq + 1
             sock.sendto(header + payload, client_addr)
-            print(f"[SERVER] FILE LIST RESPONSE sent to {client_addr[0]} | SEQ: {SEQ}")
-        elif message_type == 444:
-            if checkFileExist(payload):
-                print(f"[SERVER] DOWNLOAD REQUEST from %s (%s) ACKNOWLEDGED", client_addr[0], payload)
-                CLIENT_ACK = 0
+            display_message(f"[SERVER] {timestamp()} FILE LIST RESPONSE sent to {client_addr[0]} | SEQ: {SEQ}")
+        elif message_type == 5:
+            if checkFileExist(payload.strip()):
+                display_message(f"[SERVER] {timestamp()} DOWNLOAD REQUEST from %s (%s) ACKNOWLEDGED", client_addr[0], payload.strip())
                 RECEIVED_STATE = False
-                header = struct.pack(HEADER_FORMAT, 4, seq + 1, 0, EMPTY_HASH)
+                #payload = #total size of the file
+                header = struct.pack(HEADER_FORMAT, 5, seq + 1, 0, EMPTY_HASH)
                 sock.sendto(header, client_addr)
             else:
-                print(f"[SERVER] DOWNLOAD REQUEST ERROR from %s (%s) file does not exist", client_addr[0], payload)
+                display_message(f"[SERVER] {timestamp()} DOWNLOAD REQUEST ERROR from %s (%s) file does not exist", client_addr[0], payload)
                 header = struct.pack(HEADER_FORMAT, 5, seq + 1, 0, EMPTY_HASH)
                 sock.sendto(header, client_addr)
         elif message_type == "DOWNLOAD_CHR": # Chunk Received
-            print(f"[SERVER] DOWNLOAD RECEIVED by %s (%s)", client_addr[0], hash_value)
+            print(f"[SERVER] {timestamp()} DOWNLOAD RECEIVED by %s (%s)", client_addr[0], hash_value)
             RECEIVED_STATE = True
             CLIENT_ACK = payload
-        elif message_type == "UPLOAD_REQ":
-            print(f"[SERVER] UPLOAD REQUEST from %s (%s) ACKNOWLEDGED", client_addr[0], payload)
-            UPLOAD_LEN = payload # Format: <File Size> SP <Filename>
-            header = struct.pack(HEADER_FORMAT, "UPLOAD_ACK", -1, 0, 0, 0)
+        elif message_type == 7:
+            payload = payload.decode()
+            payload_parts = payload.split(" ")
+            UPLOAD_LEN = int(payload_parts[0])
+            UPLOAD_FNAME = payload_parts[1]
+            print(f"[SERVER] {timestamp()} UPLOAD REQUEST from {client_addr[0]} ({UPLOAD_FNAME} - {UPLOAD_LEN} bytes)")
+            header = struct.pack(HEADER_FORMAT, 8, seq + 1, 0, EMPTY_HASH)
             sock.sendto(header, client_addr)
-        elif message_type == "UPLOAD_CHUNK":
-            print("hello world")
+        elif message_type == 9:
+            #Start uploading ... To be continued ...
 
 # MAIN PROGRAM
 os.system('cls')
@@ -94,4 +111,12 @@ os.system('cls')
 
 config.checkDirectory("Server")
 startSocket()
-receive_message()
+threading.Thread(target=receive_message, daemon=True).start()
+
+command = ""
+while not command == "CLOSE_SERVER":
+    command = input()
+    if command == "CLOSE_SERVER":
+        print(f"[SERVER] {timestamp()} Listening stopped. All pending processes stopped.")
+    else:
+        display_message(f"[SERVER] {timestamp()} Invalid server command. (command: {command})")

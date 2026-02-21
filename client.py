@@ -5,6 +5,7 @@ import hashlib
 import time   
 import config
 import os
+import json
 from tkinter import Tk, filedialog
 
 # ===============================
@@ -165,7 +166,7 @@ class ReliableUDPClient:
         try:
             data, addr = self.sock.recvfrom(4096)
             msg_type, seq, plen, hash_value = struct.unpack(HEADER_FORMAT, data[:HEADER_SIZE])
-            if msg_type == UPLOAD_REQ:  # server will echo type as integer
+            if msg_type == 8:  # 8 means ACK na si upload request and pwede na mag continue mag upload ng chunks
                 print("Server acknowledged upload request.")
         except socket.timeout:
             print("No ACK received from server for upload request.")
@@ -192,8 +193,7 @@ class ReliableUDPClient:
             payload = data[HEADER_SIZE:HEADER_SIZE + plen]
 
             if msg_type == RESPONSE_LIST_FILES:
-                file_string = payload.decode()
-                file_list = file_string.split("\n") if file_string else []
+                file_list = json.loads(payload.decode())
                 return file_list
             else:
                 print("Unexpected response type.")
@@ -211,17 +211,13 @@ class ReliableUDPClient:
 # ===============================
 
 if __name__ == "__main__":
+    os.system('cls')
     print(f"Simple File Transfer Application (UDP)")
     print("        CLIENT INTERFACE")
     print(f"\nCreated by: Ke, Xan Luo and Mojica, Maurienne Marie\n\n")
     config.checkDirectory("Client")
     
-    while True:
-        print("ENTER [1] TO START HANDSHAKE_REQUEST")
-        user_input = input(">>> ").strip()
-        if user_input == "1":
-            break
-        print("\nInvalid input. Please enter 1 to start handshake.\n")
+    input("PRESS [ENTER] TO START HANDSHAKE_REQUEST")
         
     client = ReliableUDPClient(DEFAULT_PORT)
     if not client.connect():
@@ -229,15 +225,19 @@ if __name__ == "__main__":
     os.system('cls')
 
     while True:
-        print("\n====== CLIENT MENU ======")
+        print("====== CLIENT MENU ======")
         print("1. Download File from Server")
         print("2. Upload File to Server")
-        print("3. Exit")
+        print("3. Exit\n")
 
         choice = input("Choose option: ")
 
         if choice == "1":
+            os.system('cls')
+            print("Files Available (Server):\n")
             files = client.request_list_files()
+            for i, f in enumerate(files, 1):
+                print(f"{i}. {f}")
             fname = input("\nEnter filename to download: ")
 
         elif choice == "2":
