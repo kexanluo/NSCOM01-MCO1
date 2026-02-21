@@ -130,6 +130,7 @@ class ReliableUDPClient:
     # ---------------------------
     def connect(self):
         print("\nHANDSHAKE_REQUEST")
+
         for attempt in range(1, 4):   # Exactly 3 attempts
             print(f"Retry {attempt}/3...")
 
@@ -145,25 +146,24 @@ class ReliableUDPClient:
 
                 if msg_type is None:
                     print("Corrupted packet ignored.")
-                    continue
+                else:
+                    if msg_type == HANDSHAKE_RESPONSE:
 
-                if msg_type == HANDSHAKE_RESPONSE:
+                        print(f"\nServer found at ({addr[0]})")
 
-                    print(f"\nServer found at ({addr[0]})")
+                        # Save real server address
+                        self.server_addr = addr
 
-                    # Save real server address
-                    self.server_addr = addr
-                    # Complete handshake
-                    ack_pkt = make_packet(ACK, seq)
-                    self.sock.sendto(ack_pkt, self.server_addr)
-                    # Save session state
-                    self.session_active = True
-                    print("Session Established Successfully!")
-                    return True
+                        # DO NOT send automatic ACK here
+                        # Just mark session active
+                        self.session_active = True
+
+                        print("Handshake response received. Session ready.")
+                        return True
 
             except socket.timeout:
                 if attempt < 3:
-                    time.sleep(0.5)
+                    time.sleep(0.5)  # Short delay before retrying
 
         print("\nNo active server found.")
         return False
