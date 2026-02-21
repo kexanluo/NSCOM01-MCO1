@@ -3,6 +3,9 @@ import struct
 import os
 import hashlib
 import time   
+import config
+import os
+from tkinter import Tk, filedialog
 
 # ===============================
 # Protocol Constants
@@ -11,13 +14,8 @@ DEFAULT_PORT = 5555
 HANDSHAKE_REQUEST  = 1
 HANDSHAKE_RESPONSE = 2
 ACK                = 3
-DOWNLOAD_REQ       = 4
-DOWNLOAD_ACK       = 5
-DOWNLOAD_ERROR     = 6
-UPLOAD_REQ         = 7
-UPLOAD_ACK         = 8
-UPLOAD_CHUNK       = 9
-DATA               = 6
+REQUEST_LIST_FILES = 3
+RESPONSE_LIST_FILES = 4
 EOF                = 7
 HEADER_FORMAT = "!B I H 32s"
 HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
@@ -25,12 +23,16 @@ MAX_PAYLOAD = 1024
 TIMEOUT = 0.5          # ✅ shorter timeout for broadcast handshake
 MAX_RETRIES = 5
 HASH_SIZE = 32  # SHA-256 digest size
+EMPTY_HASH = b"\x00" * 32
+
+#FOR TESTING NA CONSTANT
+UPLOAD_REQ = 7     
+UPLOAD_CHUNK = 8
 
 
 # ===============================
 # Packet Format with SHA-256
 # ===============================
-
 def make_packet(msg_type, seq, payload=b""):
     plen = len(payload)
     # If payload exists, hash it
@@ -69,61 +71,39 @@ def parse_packet(packet):
     return msg_type, seq, payload
 
 
-# ===============================
-# Reliable UDP Client Class
-# ===============================
-
 class ReliableUDPClient:
 
     def __init__(self, server_port):
         # ✅ Start with broadcast address (no IP needed)
         self.server_addr = ("255.255.255.255", server_port)
-
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-
         # ✅ Enable broadcast sending
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-
         self.sock.settimeout(TIMEOUT)
-
         self.seq = 0
         self.session_active = False
 
+    def select_file(self):
+        root = Tk()
+        root.withdraw()
+        file_path = filedialog.askopenfilename(
+            initialdir=os.path.join(os.path.expanduser("~"), "Downloads"),
+            title="Select file to upload"
+        )
+        root.destroy()
 
-    # ---------------------------
-    # Reliable Send (Stop-and-Wait)
-    # ---------------------------
-    def send_reliable(self, msg_type, payload=b""):
-        retries = 0
+        if not file_path:
+            print("No file selected.")
+            return None, None, None
 
-        while retries < MAX_RETRIES:
-            pkt = make_packet(msg_type, self.seq, payload)
-            self.sock.sendto(pkt, self.server_addr)
+        filename = os.path.basename(file_path)
+        file_size = os.path.getsize(file_path)
 
-            try:
-                data, _ = self.sock.recvfrom(4096)
+        print(f"\nSelected File: {filename}")
+        print(f"Path: {file_path}")
+        print(f"Size: {file_size} bytes")
 
-                r_type, r_seq, r_payload = parse_packet(data)
-
-                if r_type is None:
-                    print("Corrupted response detected. Dropping...")
-                    continue
-
-                if r_type == ACK and r_seq == self.seq:
-                    self.seq += 1
-                    return True
-
-                if r_type == DOWNLOAD_ERROR:
-                    print("Server ERROR:", r_payload.decode())
-                    return False
-
-            except socket.timeout:
-                retries += 1
-                print("Timeout... Retransmitting seq", self.seq)
-
-        print("Failed after maximum retries.")
-        return False
-
+        return file_path, filename, file_size
 
     # ---------------------------
     # Session Establishment (Broadcast Handshake)
@@ -133,33 +113,23 @@ class ReliableUDPClient:
 
         for attempt in range(1, 4):   # Exactly 3 attempts
             print(f"Retry {attempt}/3...")
-
             syn_pkt = make_packet(HANDSHAKE_REQUEST, self.seq)
-
-            # Broadcast SYN
             self.sock.sendto(syn_pkt, self.server_addr)
 
             try:
                 data, addr = self.sock.recvfrom(4096)
-
                 msg_type, seq, _ = parse_packet(data)
 
                 if msg_type is None:
                     print("Corrupted packet ignored.")
-                else:
-                    if msg_type == HANDSHAKE_RESPONSE:
-
-                        print(f"\nServer found at ({addr[0]})")
-
-                        # Save real server address
-                        self.server_addr = addr
-
-                        # DO NOT send automatic ACK here
-                        # Just mark session active
-                        self.session_active = True
-
-                        print("Handshake response received. Session ready.")
-                        return True
+                elif msg_type == HANDSHAKE_RESPONSE:
+                    print(f"\nServer found at ({addr[0]})")
+                    self.server_addr = addr
+                    self.session_active = True
+                    # ✅ Update client seq to match next expected seq
+                    # Server response seq = client seq + 1, so client seq should also become +2
+                    self.seq = seq + 1
+                    return True
 
             except socket.timeout:
                 if attempt < 3:
@@ -167,128 +137,75 @@ class ReliableUDPClient:
 
         print("\nNo active server found.")
         return False
-
-
-    # ---------------------------
-    # Download File
-    # ---------------------------
-    def download(self, filename):
-        if not self.session_active:
-            print("No session established.")
+    
+    
+    def request_upload(self):
+        file_path, filename, file_size = self.select_file()
+        if file_path is None:
             return
 
-        print("\nRequesting download:", filename)
+        # Use the integer constant to match server
+        payload = f"{file_size} {filename}".encode()
+        header = struct.pack(
+            HEADER_FORMAT,
+            UPLOAD_REQ,   # 7 matches server check
+            self.seq,
+            len(payload),
+            EMPTY_HASH
+        )
 
-        if not self.send_reliable(DOWNLOAD_REQ, filename.encode()):
-            return
+        packet = header + payload
+        self.sock.sendto(packet, self.server_addr)
+        print(f"Upload request sent. SEQ: {self.seq}")
 
-        received_chunks = {}
+        # ✅ Increment seq after sending
+        self.seq += 1
 
-        while True:
-            try:
-                data, _ = self.sock.recvfrom(4096)
+        # Optionally, wait for an ACK from server
+        try:
+            data, addr = self.sock.recvfrom(4096)
+            msg_type, seq, plen, hash_value = struct.unpack(HEADER_FORMAT, data[:HEADER_SIZE])
+            if msg_type == UPLOAD_REQ:  # server will echo type as integer
+                print("Server acknowledged upload request.")
+        except socket.timeout:
+            print("No ACK received from server for upload request.")
 
-                msg_type, seq, payload = parse_packet(data)
+        return file_path
 
-                if msg_type is None:
-                    print("Corrupted DATA packet dropped.")
-                    continue
+    #Request and receive file list
+    def request_list_files(self):
+        header = struct.pack(
+            HEADER_FORMAT,
+            REQUEST_LIST_FILES,
+            self.seq,       # current client seq
+            0,
+            EMPTY_HASH
+        )
+        self.sock.sendto(header, self.server_addr)
+        
+        # ✅ Increment seq immediately after sending
+        self.seq += 1
 
-                if msg_type == DATA:
-                    received_chunks[seq] = payload
-                    ack_pkt = make_packet(ACK, seq)
-                    self.sock.sendto(ack_pkt, self.server_addr)
+        try:
+            data, addr = self.sock.recvfrom(4096)
+            msg_type, seq, plen, hash_value = struct.unpack(HEADER_FORMAT, data[:HEADER_SIZE])
+            payload = data[HEADER_SIZE:HEADER_SIZE + plen]
 
-                elif msg_type == EOF:
-                    print("EOF received. Download complete.")
-                    break
-
-                elif msg_type == DOWNLOAD_ERROR:
-                    print("Server ERROR:", payload.decode())
-                    return
-
-            except socket.timeout:
-                print("Timeout while receiving file.")
-                return
-
-        save_name = "downloaded_" + filename
-
-        with open(save_name, "wb") as f:
-            for i in sorted(received_chunks.keys()):
-                f.write(received_chunks[i])
-
-        print("File saved as:", save_name)
-
-
-    # ---------------------------
-    # Upload File
-    # ---------------------------
-    def upload(self, filepath):
-        if not self.session_active:
-            print("No session established.")
-            return
-
-        if not os.path.exists(filepath):
-            print("File not found locally.")
-            return
-
-        filename = os.path.basename(filepath)
-        print("\nUploading file:", filename)
-
-        if not self.send_reliable(UPLOAD_REQ, filename.encode()):
-            return
-
-        seq_num = 0
-
-        with open(filepath, "rb") as f:
-            while True:
-                chunk = f.read(MAX_PAYLOAD)
-                if not chunk:
-                    break
-
-                pkt = make_packet(UPLOAD_CHUNK, seq_num, chunk)
-
-                retries = 0
-                while retries < MAX_RETRIES:
-                    self.sock.sendto(pkt, self.server_addr)
-
-                    try:
-                        data, _ = self.sock.recvfrom(4096)
-
-                        r_type, r_seq, _ = parse_packet(data)
-
-                        if r_type is None:
-                            print("Corrupted ACK dropped.")
-                            continue
-
-                        if r_type == ACK and r_seq == seq_num:
-                            seq_num += 1
-                            break
-
-                    except socket.timeout:
-                        retries += 1
-                        print("Retransmitting chunk", seq_num)
-
-        eof_pkt = make_packet(EOF, seq_num)
-        self.sock.sendto(eof_pkt, self.server_addr)
-
-        print("Upload finished successfully!")
-
-
-    # ---------------------------
-    # Termination
-    # ---------------------------
+            if msg_type == RESPONSE_LIST_FILES:
+                file_string = payload.decode()
+                file_list = file_string.split("\n") if file_string else []
+                return file_list
+            else:
+                print("Unexpected response type.")
+                return None
+        except socket.timeout:
+            print("Server did not respond.")
+            return None
+        
     def close(self):
-        if self.session_active:
-            print("\nClosing session...")
-
-            self.send_reliable(EOF)
-            self.session_active = False
-
         self.sock.close()
-        print("Client closed.")
-
-
+        print("\nClient socket closed.")
+  
 # ===============================
 # Main Client Program
 # ===============================
@@ -297,6 +214,7 @@ if __name__ == "__main__":
     print(f"Simple File Transfer Application (UDP)")
     print("        CLIENT INTERFACE")
     print(f"\nCreated by: Ke, Xan Luo and Mojica, Maurienne Marie\n\n")
+    config.checkDirectory("Client")
     
     while True:
         print("ENTER [1] TO START HANDSHAKE_REQUEST")
@@ -319,12 +237,12 @@ if __name__ == "__main__":
         choice = input("Choose option: ")
 
         if choice == "1":
-            fname = input("(Show File List on Server)")
-            client.download(fname)
+            files = client.request_list_files()
+            fname = input("\nEnter filename to download: ")
 
         elif choice == "2":
-            path = input("Show file list on from Client")
-            client.upload(path)
+            # Show local file picker and send upload request
+            client.request_upload()
 
         elif choice == "3":
             client.close()
