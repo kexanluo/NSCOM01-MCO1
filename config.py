@@ -1,8 +1,8 @@
 from pathlib import Path
 import sys
 
-target_folder_server = Path.home() / "Desktop" / "nscomServer"
-target_folder_client = Path.home() / "Desktop" / "nscomClient"
+target_folder_server = Path(__file__).resolve().parent / "nscomServer"
+target_folder_client = Path(__file__).resolve().parent / "nscomClient"
 
 def checkDirectory(role):
     if role == "Server":

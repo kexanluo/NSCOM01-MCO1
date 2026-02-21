@@ -44,19 +44,19 @@ def receive_message():
         payload = data[HEADER_SIZE:HEADER_SIZE + plen]
 
         if message_type == 1:
-            print(f"[SERVER] HANDSHAKE REQUEST from %s ACKNOWLEDGED", client_addr[0])
+            print(f"[SERVER] HANDSHAKE REQUEST from {client_addr[0]} ACKNOWLEDGED")
             header = struct.pack(HEADER_FORMAT, 2, seq + 1, 0, EMPTY_HASH)
             sock.sendto(header, client_addr)
-        elif message_type == "DOWNLOAD_REQ":
+        elif message_type == 3:
             if checkFileExist(payload):
                 print(f"[SERVER] DOWNLOAD REQUEST from %s (%s) ACKNOWLEDGED", client_addr[0], payload)
                 CLIENT_ACK = 0
                 RECEIVED_STATE = False
-                header = struct.pack(HEADER_FORMAT, "DOWNLOAD_ACK", -1, 0, 0, 0)
+                header = struct.pack(HEADER_FORMAT, 4, seq + 1, 0, EMPTY_HASH)
                 sock.sendto(header, client_addr)
             else:
                 print(f"[SERVER] DOWNLOAD REQUEST ERROR from %s (%s) file does not exist", client_addr[0], payload)
-                header = struct.pack(HEADER_FORMAT, "DOWNLOAD_ERROR", -1, 0, 0, 0)
+                header = struct.pack(HEADER_FORMAT, 5, seq + 1, 0, EMPTY_HASH)
                 sock.sendto(header, client_addr)
         elif message_type == "DOWNLOAD_CHR": # Chunk Received
             print(f"[SERVER] DOWNLOAD RECEIVED by %s (%s)", client_addr[0], hash_value)
@@ -80,4 +80,4 @@ os.system('cls')
 
 config.checkDirectory("Server")
 startSocket()
-threading.Thread(target=receive_message).start()
+receive_message()
