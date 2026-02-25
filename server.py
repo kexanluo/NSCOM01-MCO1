@@ -143,6 +143,7 @@ def send_file(client_addr): # Used for sending file. (Client Download)
                     retry += 1
             else: # Triggered when maximun retries reached.
                 display_message(f"[SERVER] {timestamp()} DOWNLOAD ERROR - Maximum 3 retries sent with no ACKNOWLEDGEMENT from {client_addr[0]}. Download Failed.")
+                CLIENT_CONNECTED = False
                 return
 
 def receive_file(client_addr): # Used for uploading file. (Client Upload)
@@ -198,6 +199,7 @@ def receive_file(client_addr): # Used for uploading file. (Client Upload)
 
             if retry == 3: # Maximum retries reached
                 display_message(f"[SERVER] {timestamp()} UPLOAD ERROR - No new chunk received after 3 retries. {client_addr[0]} disconnected or crashed. Upload Failed.")
+                CLIENT_CONNECTED = False
                 return
 
     with open(folder/HOLDER_FNAME, "wb") as f: # If complete file chunks received. This will run
