@@ -163,6 +163,10 @@ def receive_file(client_addr): # Used for uploading file. (Client Upload)
             
             if message_type is None: # Handles unrecognized packet
                 continue
+            
+            if message_type == 255: # Handles Another Session Checking for Active Server
+                sock.sendto(encrypt(b""), addr)
+                continue
 
             if not client_addr == addr: # Disregard any packet not sent by current client
                 continue
