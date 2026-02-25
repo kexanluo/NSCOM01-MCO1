@@ -303,8 +303,8 @@ def receive_message(): # Handles all incoming message except upload and sending 
 
 # MAIN PROGRAM
 os.system('cls')
-print(f"Simple File Transfer Application (UDP)")
-print("        SERVER INTERFACE")
+print(f"NSCOM Reliable UDP Protocol")
+print("     SERVER INTERFACE")
 print(f"\nCreated by: Ke, Xan Luo and Mojica, Maurienne Marie\n\n")
 input("PRESS [ENTER] TO START THE SERVER")
 os.system('cls')

@@ -420,8 +420,8 @@ class ReliableUDPClient:
 
 if __name__ == "__main__":
     os.system('cls')
-    print(f"Simple File Transfer Application (UDP)")
-    print("        CLIENT INTERFACE")
+    print(f"NSCOM Reliable UDP Protocol")
+    print("     CLIENT INTERFACE")
     print(f"\nCreated by: Ke, Xan Luo and Mojica, Maurienne Marie\n\n")
     config.checkDirectory("Client")
     
